@@ -188,38 +188,32 @@ class BotManager:
     
     def set_api(self, user_id, api_id):
         """
-        设置api
-        0：deepseek api
-        1：腾讯api
+        设置api，编号按config.yml中api_list的顺序：
+        0 deepseek api / 1 腾讯api / 2 kilo 免密免费车道 ...
         """
         if not is_admin(user_id):
             logging.info(f"非管理员账号{user_id}尝试调用set_api")
             return False, "设置失败，不是管理员"
-        now_api = self.config['chat']['api']
-        if now_api == 'deepseek' and api_id == 0:
-            logging.info(f"管理员{user_id}尝试重复设置api为deepseek")
-            return False, "设置失败， 已是deepseek api"
-        if now_api == 'tencent' and api_id == 1:
-            logging.info(f"管理员{user_id}尝试重复设置api为腾讯api")
-            return False, "设置失败， 已是腾讯api"
-        if api_id == 0 and self.config['key_list']['deepseek'] == '':
-            logging.warning(f"管理员{user_id}尝试设置api为deepseek，但是未设置deepseek key")
-            return False, "设置失败， 未设置deepseek key"
-        if api_id == 1 and self.config['key_list']['tencent'] == '':
-            logging.warning(f"管理员{user_id}尝试设置api为腾讯api，但是未设置腾讯api key")
-            return False, "设置失败， 未设置腾讯api key"
-        
-        if api_id == 0:
-            self.config['chat']['api'] = 'deepseek'
-            config.set_config(self.config)
-            return True, "已设置api为deepseek"
-        if api_id == 1:
-            self.config['chat']['api'] = 'tencent'
-            config.set_config(self.config)
-            return True, "已设置api为腾讯api"
-        else:
+
+        names = list(self.config['api_list'].keys())
+        if not isinstance(api_id, int) or api_id < 0 or api_id >= len(names):
             logging.warning(f"管理员{user_id}尝试设置api为{api_id}，但是api_id错误")
-            return False, "设置失败， api_id错误"
+            return False, f"设置失败， api_id错误，可选 0-{len(names) - 1}"
+
+        name = names[api_id]
+        if self.config['chat']['api'] == name:
+            logging.info(f"管理员{user_id}尝试重复设置api为{name}")
+            return False, f"设置失败， 已是{name} api"
+
+        # 免密车道不需要key
+        keyless = name in (self.config.get('keyless') or [])
+        if not keyless and not self.config['key_list'].get(name, ''):
+            logging.warning(f"管理员{user_id}尝试设置api为{name}，但是未设置{name} key")
+            return False, f"设置失败， 未设置{name} key"
+
+        self.config['chat']['api'] = name
+        config.set_config(self.config)
+        return True, f"已设置api为{name}"
         
 
     def trim_messages(self, group_id, user_id):

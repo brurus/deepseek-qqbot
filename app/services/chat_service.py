@@ -17,11 +17,33 @@ class ChatService:
         self.refresh()
 
     def refresh(self):
-        """读取最新配置并重建client，key未配置时client为None，避免构造即抛异常"""
+        """读取最新配置并重建client
+
+        - 未配置Key的车道client为None，避免构造即抛异常
+        - 免密车道（keyless）不需要Key，且必须下发空Authorization，带占位Key会被上游401
+        """
         self.config = config.get_config()
         self.api = self.config['chat']['api']
         key = self.config['key_list'].get(self.api, '')
-        self.client = OpenAI(api_key = key, base_url = self.config['api_list'][self.api]) if key else None
+        self.keyless = self.api in (self.config.get('keyless') or [])
+        base_url = self.config['api_list'].get(self.api)
+
+        if not base_url or (not key and not self.keyless):
+            self.client = None
+            return
+
+        if self.keyless:
+            # 免密网关不接受任何Bearer，用空Authorization覆盖掉SDK自动拼的那一串
+            self.client = OpenAI(api_key = 'keyless', base_url = base_url,
+                                 default_headers = {"Authorization": ""})
+        else:
+            self.client = OpenAI(api_key = key, base_url = base_url)
+
+    def resolve_model(self, kind):
+        """按当前车道取实际下发给上游的模型名，kind为chat或reasoner"""
+        table = (self.config.get('model_list') or {}).get(self.api) or {}
+        fallback = 'deepseek-chat' if kind == 'chat' else 'deepseek-reasoner'
+        return table.get(kind) or fallback
 
     async def get(self, event: EventMessage, text: str):
         self.refresh()
@@ -92,10 +114,7 @@ class ChatService:
         
     async def send_by_chat_model(self, messages, group_id):
         #function calling暂不可用，等官方修复
-        if self.api == 'tencent':
-            model = "deepseek-v3"
-        else:
-            model = "deepseek-chat"
+        model = self.resolve_model('chat')
         try:
             response = self.client.chat.completions.create(
                 model = model,
@@ -116,6 +135,10 @@ class ChatService:
                     if content_chunk:
                         print(content_chunk, end="", flush=True)
             else:
+                # 上游偶发 HTTP 200 但 choices 为 null（免费车道尤其常见）
+                if not response.choices:
+                    logging.warning("上游返回空choices")
+                    return "服务器繁忙，请稍后再试。"
                 content = response.choices[0].message.content
             
             logging.info(f"调用完毕: {content}")
@@ -172,10 +195,7 @@ class ChatService:
             return f"出现未知错误：{e}"
     
     async def send_by_reasoner_model(self, messages, group_id):
-        if self.api == 'tencent':
-            model = "deepseek-r1"
-        else:
-            model = "deepseek-reasoner"
+        model = self.resolve_model('reasoner')
         try:
             response = self.client.chat.completions.create(
                 model=model,
@@ -189,18 +209,27 @@ class ChatService:
             
             if self.config['chat']['stream']:
                 for chunk in response:
-                    if hasattr(chunk.choices[0].delta, 'reasoning_content') and chunk.choices[0].delta.reasoning_content != None:
-                        reasoning_content += chunk.choices[0].delta.reasoning_content
-                        print(chunk.choices[0].delta.reasoning_content, end="", flush=True)
-                    if hasattr(chunk.choices[0].delta, 'content') and chunk.choices[0].delta.content != None:
-                        content += chunk.choices[0].delta.content
-                        print(chunk.choices[0].delta.content, end="", flush=True)
+                    delta = chunk.choices[0].delta
+                    # 不同上游字段名不同：deepseek用reasoning_content，Kilo用reasoning
+                    reasoning_chunk = getattr(delta, 'reasoning_content', None) or getattr(delta, 'reasoning', None)
+                    if reasoning_chunk:
+                        reasoning_content += reasoning_chunk
+                        print(reasoning_chunk, end="", flush=True)
+                    content_chunk = getattr(delta, 'content', None)
+                    if content_chunk:
+                        content += content_chunk
+                        print(content_chunk, end="", flush=True)
 
                 logging.info(f"调用完毕:<think> {reasoning_content.strip()} <think> ************************ {content}")
             else:
-                logging.info(f"调用完毕: {response.choices[0].message}")
-                reasoning_content = response.choices[0].message.reasoning_content
-                content = response.choices[0].message.content
+                # 上游偶发 HTTP 200 但 choices 为 null（免费车道尤其常见）
+                if not response.choices:
+                    logging.warning("上游返回空choices")
+                    return "", "服务器繁忙，请稍后再试。"
+                message = response.choices[0].message
+                logging.info(f"调用完毕: {message}")
+                reasoning_content = getattr(message, 'reasoning_content', None) or getattr(message, 'reasoning', None) or ''
+                content = message.content
             
             if content is None or content == "":
                 return "", "服务器繁忙，请稍后再试。"

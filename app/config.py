@@ -1,3 +1,4 @@
+import copy
 import getpass
 import logging
 import os
@@ -41,11 +42,33 @@ config = {
     },
     "api_list": {
         "deepseek": "https://api.deepseek.com",
-        "tencent": "https://api.lkeap.cloud.tencent.com/v1"
+        "tencent": "https://api.lkeap.cloud.tencent.com/v1",
+        "kilo": "https://api.kilo.ai/api/gateway"   # 免密免费车道
     },
     "key_list": {   #别在这里修改，在config/config.yml中修改
         "deepseek": "",
-        "tencent": ""
+        "tencent": "",
+        "kilo": ""   # 免密车道留空即可，不需要填Key
+    },
+    "keyless": ["kilo"],   # 无需鉴权的车道，这些车道不会下发Authorization
+    "model_list": {   # 各车道实际下发给上游的模型名
+        "deepseek": {
+            "chat": "deepseek-chat",
+            "reasoner": "deepseek-reasoner"
+        },
+        "tencent": {
+            "chat": "deepseek-v3",
+            "reasoner": "deepseek-r1"
+        },
+        "kilo": {
+            # 免费池跟随上游变动，模型名可能失效（失效时上游返回404/502）。
+            # 2026-10-23 实测可用的备选（GET https://api.kilo.ai/api/gateway/models 里 isFree: true 的项）：
+            #   kilo-auto/free（自动路由，偶发502）、openrouter/free、poolside/laguna-s-2.1:free、
+            #   recursive/flint-v1.0:free、nvidia/nemotron-3.5-lightning:free、reflection/beam-free
+            # 注意：聚合网关的模型名与实际后端不总是一一对应，回复里自报家门可能与模型名不符。
+            "chat": "nvidia/nemotron-3-ultra-550b-a55b:free",
+            "reasoner": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free"
+        }
     }
 }
 
@@ -60,6 +83,20 @@ def get_bot_id():
     """获取机器人QQ号"""
     config = get_config()
     return config['bot']['bot_id']
+def _merge_defaults(data):
+    """用默认值补齐旧版本config.yml缺失的配置项（深拷贝，避免默认值被运行期改脏）"""
+    defaults = config
+    if not isinstance(data, dict):
+        return copy.deepcopy(defaults)
+    for key, value in defaults.items():
+        if key not in data or data[key] is None:
+            data[key] = copy.deepcopy(value)
+        elif isinstance(value, dict) and isinstance(data[key], dict):
+            for sub_key, sub_value in value.items():
+                if sub_key not in data[key] or data[key][sub_key] is None:
+                    data[key][sub_key] = copy.deepcopy(sub_value)
+    return data
+
 def get_config():
     """获取配置"""
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -69,7 +106,7 @@ def get_config():
         init()
     with open(config_path, 'r', encoding='utf-8') as f:
         data = yaml.safe_load(f)
-    return data
+    return _merge_defaults(data)
 
 def set_config(config):
     """设置配置信息"""
@@ -91,7 +128,8 @@ def init():
         logging.info("初始化配置文件")
         
         print("选择api提供方，默认使用deepseek官方api，如果要更换请输入数字：")
-        print("1.更换为腾讯api")
+        print("1.更换为腾讯api（需要填腾讯的Key）")
+        print("2.使用Kilo免密免费车道（不需要Key，免费但上游可能记录prompt）")
         api = input("请输入数字（如果不更换，直接回车）：")
 
         input_admins = input("请输入管理员QQ号(多个用英文逗号隔开):")
@@ -106,16 +144,21 @@ def init():
 
         config['chat']['admins'] = admins
 
-        api_name = '腾讯' if api == '1' else 'DeepSeek'
-        key = getpass.getpass(f"请输入{api_name} API Key（输入时不可见）:")
-        if api == '1':
-            config['chat']['api'] = "tencent"
-            config['key_list']['tencent'] = key
+        if api == '2':
+            # 免密车道，留空即可
+            config['chat']['api'] = "kilo"
         else:
-            config['key_list']['deepseek'] = key
+            api_name = '腾讯' if api == '1' else 'DeepSeek'
+            key = getpass.getpass(f"请输入{api_name} API Key（输入时不可见）:")
+            if api == '1':
+                config['chat']['api'] = "tencent"
+                config['key_list']['tencent'] = key
+            else:
+                config['key_list']['deepseek'] = key
         with open(config_path, 'w', encoding='utf-8') as f:
             yaml.dump(config, f, allow_unicode=True, sort_keys = False)
         print("已保存，修改请在config目录中config.yml文件进行")
+        print("提示：群内发送 /set api [id] 可随时切换车道（0 deepseek / 1 腾讯 / 2 kilo免密免费）")
     
 
     
