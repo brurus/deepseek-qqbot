@@ -26,6 +26,9 @@ app = FastAPI()
 config = get_config()
 message_handler = MessageHandler()
 
+# 持有后台任务引用，防止被GC回收
+_background_tasks = set()
+
 @app.post('/')
 async def message_listener(request: Request):
     data = await request.json()
@@ -33,9 +36,11 @@ async def message_listener(request: Request):
     if data['post_type'] != 'message':
         print('not message')
         return {'status': 'ok'}
-    
-    await asyncio.create_task(message_handler.handle(data))
-    
+
+    task = asyncio.create_task(message_handler.handle(data))
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
     return {'status': 'ok'}
 
 

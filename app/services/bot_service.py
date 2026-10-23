@@ -42,7 +42,7 @@ class BotService:
         except Exception as e:
             logging.warning(f"=== 获取机器人信息失败 === {str(e)}")
             print("无法连接到机器人服务！！")
-            raise("请确定是否启动了LLonebot")
+            raise RuntimeError("请确定是否启动了LLonebot") from e
 
 
     async def send_group_message(self, group_id: int, message: str, user_id: list = None, at_user: bool = False) -> bool:
@@ -165,10 +165,18 @@ class BotService:
         if not is_admin(user_id):
             return "不是管理员"
 
+        self.config = config.get_config()
+        api = self.config['chat']['api']
+        key = self.config['key_list'].get(api, '')
+        if not key:
+            return f"未设置{api}的API Key"
+        if api != 'deepseek':
+            return "当前api不支持余额查询"
+
         url = "https://api.deepseek.com/user/balance"
         headers = {
             'Accept': 'application/json',
-            'Authorization': 'Bearer ' + self.config['chat']['api_key']
+            'Authorization': 'Bearer ' + key
         }
 
         async with aiohttp.ClientSession() as session:

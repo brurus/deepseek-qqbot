@@ -30,7 +30,7 @@ DeepSeek QQBot 是一个基于 [LLOneBot](https://github.com/LLOneBot/LLOneBot) 
 ### 1. 克隆仓库
 首先，将本项目克隆到本地：
 ```bash
-git clone https://github.com/CikeSeven/deepseek-qqbot.git
+git clone https://github.com/brurus/deepseek-qqbot.git
 cd deepseek-qqbot
 ```
 

@@ -95,15 +95,19 @@ def init():
         api = input("请输入数字（如果不更换，直接回车）：")
 
         input_admins = input("请输入管理员QQ号(多个用英文逗号隔开):")
-        parts = [admin.strip() for admin in input_admins.split(',')]
+        parts = [p.strip() for p in input_admins.split(',') if p.strip()]
 
-        admins= []
+        admins = []
         for admin in parts:
-            admins.append(int(admin))
-            
+            if admin.isdigit():
+                admins.append(int(admin))
+            else:
+                print(f"跳过无效的管理员账号: {admin}")
+
         config['chat']['admins'] = admins
 
-        key = getpass.getpass("请输入DeepSeek API Key（输入时不可见）:")
+        api_name = '腾讯' if api == '1' else 'DeepSeek'
+        key = getpass.getpass(f"请输入{api_name} API Key（输入时不可见）:")
         if api == '1':
             config['chat']['api'] = "tencent"
             config['key_list']['tencent'] = key

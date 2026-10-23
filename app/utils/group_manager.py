@@ -8,36 +8,56 @@ import yaml
 from models.chat_models import ChatModels
 import config
 
+_bot_id = None
+
+
+def get_bot_id():
+    """获取机器人QQ号（首次调用时查询并缓存，不再在import阶段强连LLOneBot）"""
+    global _bot_id
+    if _bot_id is None:
+        cfg = config.get_config()
+        cached = cfg.get('bot', {}).get('bot_id')
+        if cached:
+            _bot_id = cached
+        else:
+            from services.bot_service import BotService
+            bot_service = BotService()
+            bot_info = asyncio.run(bot_service.get_bot_info())
+            _bot_id = bot_info['user_id']
+            config.set_bot_id(_bot_id)
+    return _bot_id
+
+
 class GroupManager:
-    from services.bot_service import BotService
-
-    bot_service = BotService()
-    config.set_bot_id(asyncio.run(bot_service.get_bot_info())['user_id'])
-
-    config = {
-        'open': True,
-        'admins': [],   #群组的管理员
-        'model': ChatModels.DEFAULT.value,    #默认使用全局配置
-        "show_reasoning_content": 'default'
-    }
-
 
     def __init__(self):
         self.base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.groups_dir = os.path.join(self.base_dir, 'config', str(config.get_bot_id()), 'groups')
+        self.groups_dir = os.path.join(self.base_dir, 'config', str(get_bot_id()), 'groups')
         # 确保groups目录存在
         Path(self.groups_dir).mkdir(parents=True, exist_ok=True)
-    
+
+    @staticmethod
+    def default_config():
+        """群组默认配置，每次返回新字典，避免类级共享可变状态被改脏"""
+        return {
+            'open': False,
+            'admins': [],   # 群组的管理员
+            'model': ChatModels.DEFAULT.value,    # 默认使用全局配置
+            'show_reasoning_content': 'default'
+        }
+
     def get_groups(self):
         """获取群组列表"""
         if not os.path.exists(self.groups_dir):
             return []
         groups = []
         for file in os.listdir(self.groups_dir):
-            group_id = int(file.split('.')[0])
-            groups.append(group_id)
+            try:
+                groups.append(int(file.split('.')[0]))
+            except ValueError:
+                continue
         return groups
-    
+
     def get_group_config_path(self, group_id: int) -> str:
         """获取群配置文件路径"""
         group_dir = os.path.join(self.groups_dir, str(group_id))
@@ -49,25 +69,27 @@ class GroupManager:
         group_dir = os.path.join(self.groups_dir, str(group_id))
         Path(group_dir).mkdir(exist_ok=True)
         return os.path.join(group_dir, 'message.json')
-    
+
     def get_config(self, group_id: int):
-        """获取群配置"""
+        """获取群配置，不存在则创建默认配置并返回（不再返回None）"""
         path = self.get_group_config_path(group_id)
         if os.path.exists(path):
-            with open(path, 'r', encoding = 'utf-8') as f:
-                config = yaml.safe_load(f)
-            return config
-        config = self.config
-        config['open']=False
-        self.set_config(config, group_id)
-        self.close_group(group_id)
-    
+            with open(path, 'r', encoding='utf-8') as f:
+                data = yaml.safe_load(f)
+            if not isinstance(data, dict):
+                data = self.default_config()
+                self.set_config(data, group_id)
+            return data
+        data = self.default_config()
+        self.set_config(data, group_id)
+        return data
+
     def set_config(self, config, group_id):
         """设置群配置"""
         path = self.get_group_config_path(group_id)
-        with open(path, 'w', encoding = 'utf-8') as f:
-            yaml.dump(config, f, allow_unicode = True, sort_keys = False)
-    
+        with open(path, 'w', encoding='utf-8') as f:
+            yaml.dump(config, f, allow_unicode=True, sort_keys=False)
+
     def open_groups(self, groups):
         """开启多个群组"""
         success = fail = 0
@@ -79,7 +101,7 @@ class GroupManager:
         return success, fail
 
     def close_groups(self, groups):
-        """关闭多个群组""" 
+        """关闭多个群组"""
         success = fail = 0
         for group in groups:
             if self.close_group(group):
@@ -87,33 +109,34 @@ class GroupManager:
             else:
                 fail += 1
         return success, fail
-        
 
     def open_group(self, group_id: int) -> bool:
         """开启群组"""
         config_path = self.get_group_config_path(group_id)
         if not os.path.exists(config_path):
-            self.set_config(self.config, group_id)
+            new_config = self.default_config()
+            new_config['open'] = True
+            self.set_config(new_config, group_id)
             return True
-        config = self.get_config(group_id)
-        if config['open']:
+        group_config = self.get_config(group_id)
+        if group_config['open']:
             return False
-        config['open'] = True
-        self.set_config(config, group_id)
+        group_config['open'] = True
+        self.set_config(group_config, group_id)
         return True
-    
+
     def close_group(self, group_id: int) -> bool:
         """关闭群组"""
         config_path = self.get_group_config_path(group_id)
         if not Path(config_path).exists():
             return False
-        config = self.get_config(group_id)
-        if not config['open']:
+        group_config = self.get_config(group_id)
+        if not group_config['open']:
             return False
-        config['open'] = False
-        self.set_config(config, group_id)
+        group_config['open'] = False
+        self.set_config(group_config, group_id)
         return True
-    
+
     def clear(self, group_id: int) -> bool:
         """清除聊天记录"""
         messages_path = self.get_group_messages_path(group_id)
@@ -123,7 +146,7 @@ class GroupManager:
         with open(messages_path, 'w', encoding='utf-8') as f:
             json.dump(data, f, ensure_ascii=False, indent=4)
         return True
-    
+
     def add_admins(self, group_id, admins):
         """添加群组管理员"""
         group_config = self.get_config(group_id)
@@ -132,7 +155,7 @@ class GroupManager:
                 group_config['admins'].append(admin)
         self.set_config(group_config, group_id)
         return True
-    
+
     def remove_admins(self, group_id, admins):
         """删除群组管理员"""
         group_config = self.get_config(group_id)
@@ -145,5 +168,5 @@ class GroupManager:
         config_path = self.get_group_config_path(group_id)
         if not Path(config_path).exists():
             return False
-        config = self.get_config(group_id)
-        return config['open']
+        group_config = self.get_config(group_id)
+        return group_config['open']

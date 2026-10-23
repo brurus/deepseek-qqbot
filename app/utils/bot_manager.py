@@ -36,7 +36,7 @@ class BotManager:
     def set_model_to_v3(self, group_id, user_id):
         """设置当前群聊模型为V3"""
         if (not is_admin(user_id)) and (not is_group_admin(group_id, user_id)):
-            logging.ingo(f"非管理员账号{user_id}尝试调用set_model_to_v3")
+            logging.info(f"非管理员账号{user_id}尝试调用set_model_to_v3")
             return False, "修改失败，不是管理员"
         group_config = self.group_manager.get_config(group_id)
         print(group_config)
@@ -50,7 +50,7 @@ class BotManager:
     def set_model_to_r1(self, group_id, user_id):
         """切换当前群聊模型为R1"""
         if (not is_admin(user_id)) and (not is_group_admin(group_id, user_id)):
-            logging.ingo(f"非管理员账号{user_id}尝试调用set_model_to_r1")
+            logging.info(f"非管理员账号{user_id}尝试调用set_model_to_r1")
             return False, "修改失败，不是管理员"
         group_config = self.group_manager.get_config(group_id)
         
@@ -64,7 +64,7 @@ class BotManager:
     def set_model_to_default(self, group_id, user_id):
         """切换当前群聊模型为默认"""
         if (not is_admin(user_id)) and (not is_group_admin(group_id, user_id)):
-            logging.ingo(f"非管理员账号{user_id}set_model_to_default")
+            logging.info(f"非管理员账号{user_id}set_model_to_default")
             return False, "修改失败，不是管理员"
         group_config = self.group_manager.get_config(group_id)
         if group_config['model'] == ChatModels.DEFAULT.value:
@@ -77,7 +77,7 @@ class BotManager:
     def set_global_model_to_v3(self, user_id):
         """切换默认模型为V3"""
         if not is_admin(user_id) :
-            logging.ingo(f"非管理员账号{user_id}尝试调用set_global_model_to_v3")
+            logging.info(f"非管理员账号{user_id}尝试调用set_global_model_to_v3")
             return False, "修改失败，不是管理员"
         if self.config['chat']['model'] == ChatModels.DEEPSEEK_CHAT.value:
             logging.info(f"管理员{user_id}尝试重复修改全局模型为V3")
@@ -89,7 +89,7 @@ class BotManager:
     def set_global_model_to_r1(self, user_id):
         """切换默认模型为R1"""
         if not is_admin(user_id):
-            logging.ingo(f"非管理员账号{user_id}尝试调用set_global_model_to_r1")
+            logging.info(f"非管理员账号{user_id}尝试调用set_global_model_to_r1")
             return False, "修改失败，不是管理员"
         if self.config['chat']['model'] == ChatModels.DEEPSEEK_REASONER.value:
             logging.info(f"管理员{user_id}尝试重复修改全局模型为R1")
@@ -100,8 +100,8 @@ class BotManager:
     
     def open_think_content(self, group_id, user_id):
         """打开当前群聊思考过程"""
-        if (not is_admin(user_id)) and (not is_group_admin(user_id)):
-            logging.ingo(f"非管理员账号{user_id}尝试调用open_think_content")
+        if (not is_admin(user_id)) and (not is_group_admin(group_id, user_id)):
+            logging.info(f"非管理员账号{user_id}尝试调用open_think_content")
             return False, "开启失败，不是管理员"
         group_config = self.group_manager.get_config(group_id)
         if group_config['show_reasoning_content'] == True:
@@ -114,7 +114,7 @@ class BotManager:
     def open_global_think_content(self, user_id):
         """打开默认显示思考过程"""
         if not is_admin(user_id):
-            logging.ingo(f"非管理员账号{user_id}尝试调用open_global_think_content")
+            logging.info(f"非管理员账号{user_id}尝试调用open_global_think_content")
             return False, "开启失败，不是管理员"
         if self.config['chat']['show_reasoning_content']:
             logging.info(f"管理员{user_id}尝试重复开启全局思考过程")
@@ -125,8 +125,8 @@ class BotManager:
     
     def default_think_content(self, group_id, user_id):
         """设置当前群聊思考过程显示为默认"""
-        if (not is_admin(user_id)) and (not is_group_admin(user_id)):
-            logging.ingo(f"非管理员账号{user_id}default_think_content")
+        if (not is_admin(user_id)) and (not is_group_admin(group_id, user_id)):
+            logging.info(f"非管理员账号{user_id}default_think_content")
             return False, "设置失败，不是管理员"
         group_config = self.group_manager.get_config(group_id)
         if group_config['show_reasoning_content'] == 'default':
@@ -138,8 +138,8 @@ class BotManager:
     
     def close_think_content(self, group_id, user_id):
         """关闭当前群聊思考过程"""
-        if (not is_admin(user_id)) and (not is_group_admin(user_id)):
-            logging.ingo(f"非管理员账号{user_id}尝试调用close_think_content")
+        if (not is_admin(user_id)) and (not is_group_admin(group_id, user_id)):
+            logging.info(f"非管理员账号{user_id}尝试调用close_think_content")
             return False, "关闭失败，不是管理员"
         group_config = self.group_manager.get_config(group_id)
         if not group_config['show_reasoning_content']:
@@ -152,7 +152,7 @@ class BotManager:
     def close_global_think_content(self, user_id):
         """关闭全局思考过程"""
         if not is_admin(user_id):
-            logging.ingo(f"非管理员账号{user_id}尝试调用close_global_think_content")
+            logging.info(f"非管理员账号{user_id}尝试调用close_global_think_content")
             return False, "关闭失败，不是管理员"
         if not self.config['chat']['show_reasoning_content']:
             logging.info(f"管理员{user_id}尝试重复关闭全局思考过程")
@@ -164,7 +164,7 @@ class BotManager:
     def open_stream(self, user_id):
         """开启流式输出"""
         if not is_admin(user_id):
-            logging.ingo(f"非管理员账号{user_id}尝试调用open_stream")
+            logging.info(f"非管理员账号{user_id}尝试调用open_stream")
             return False, "开启失败，不是管理员"
         if self.config['chat']['stream']:
             logging.info(f"管理员{user_id}尝试重复开启流式输出")
@@ -175,8 +175,8 @@ class BotManager:
     
     def close_stream(self, group_id, user_id):
         """关闭流式输出"""
-        if (not is_admin(user_id)) and (not is_group_admin(user_id)):
-            logging.ingo(f"非管理员账号{user_id}尝试调用close_stream")
+        if (not is_admin(user_id)) and (not is_group_admin(group_id, user_id)):
+            logging.info(f"非管理员账号{user_id}尝试调用close_stream")
             return False, "关闭失败，不是管理员"
         group_config = self.group_manager.get_config(group_id)
         if not group_config['stream']:
@@ -193,7 +193,7 @@ class BotManager:
         1：腾讯api
         """
         if not is_admin(user_id):
-            logging.ingo(f"非管理员账号{user_id}尝试调用set_api")
+            logging.info(f"非管理员账号{user_id}尝试调用set_api")
             return False, "设置失败，不是管理员"
         now_api = self.config['chat']['api']
         if now_api == 'deepseek' and api_id == 0:
@@ -224,8 +224,8 @@ class BotManager:
 
     def trim_messages(self, group_id, user_id):
         """清理冗余信息"""
-        if (not is_admin(user_id)) and (not is_group_admin(user_id)):
-            logging.ingo(f"非管理员账号{user_id}尝试调用trim_messages")
+        if (not is_admin(user_id)) and (not is_group_admin(group_id, user_id)):
+            logging.info(f"非管理员账号{user_id}尝试调用trim_messages")
             return False, 0, "清理失败，不是管理员"
         messages_file = Path(self.group_manager.get_group_messages_path(group_id))
         if not messages_file.exists():

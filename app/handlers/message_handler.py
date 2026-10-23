@@ -77,7 +77,7 @@ class MessageHandler:
                         logging.info(f"管理员 {event.user_id} 将群 {event.group_id} 模型切换为 default")
                         await self.bot_service.send_group_message(event.group_id, "已切换模型为默认")
                     return
-                case '/think default' | 'td':
+                case '/think default' | '/td':
                     success, _ = self.bot_manager.default_think_content(event.group_id, event.user_id)
                     if success:
                         logging.info(f"管理员 {event.user_id} 将群 {event.group_id} 思考过程显示方式切换为 default")
@@ -116,7 +116,7 @@ class MessageHandler:
                 
                 if '/set api' in text.lower():
                     parts = [part for part in text.split(' ')]
-                    if len(parts) < 3:
+                    if len(parts) < 3 or not parts[2].isdigit():
                         await self.bot_service.send_group_message(event.group_id, "指令错误")
                         return
                     api_id = int(parts[2])
@@ -168,8 +168,11 @@ class MessageHandler:
 
         if(self.group_manager.group_is_open(event.group_id)):
             from services.chat_service import ChatService
-            chat_service = ChatService()
-            await chat_service.get(event, text)
+            try:
+                chat_service = ChatService()
+                await chat_service.get(event, text)
+            except Exception as e:
+                logging.exception(f"处理群 {event.group_id} 消息时出错: {e}")
             
 
     async def handle_private_message(self, event: EventMessage):
@@ -219,20 +222,27 @@ class MessageHandler:
 
 
     async def preprocess_message(self, data):
-        import config
-        bot_info = await self.bot_service.get_bot_info()
-        bot_id = bot_info['user_id']
-        config.set_bot_id(bot_id)
+        # bot_id 走缓存，不再每条消息都请求一次 LLOneBot
+        from utils.group_manager import get_bot_id
+        bot_id = get_bot_id()
+
+        if not isinstance(data.get('message'), list):
+            logging.warning("消息格式异常，缺少message列表，已忽略")
+            return
 
         processed_segments = []
         fromatted_message = []
-        for seg in data.get('message', []):
+        for seg in data['message']:
             processed_segments.append(await self. parse_message(seg))
             fromatted_message.append(await self.fromat_message(seg, data['self_id']))
         text = ''.join(str(i) for i in fromatted_message)
         data['message'] = processed_segments
         data['text'] = text
-        event = EventMessage(**data)
+        try:
+            event = EventMessage(**data)
+        except ValidationError as e:
+            logging.warning(f"消息解析失败，已忽略: {e}")
+            return
         if event.message_type == 'private':
             await self.handle_private_message(event)
             return

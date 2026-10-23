@@ -14,11 +14,22 @@ class ChatService:
     def __init__(self):
         self.group_manager = GroupManager()
         self.bot_service = BotService()
+        self.refresh()
+
+    def refresh(self):
+        """读取最新配置并重建client，key未配置时client为None，避免构造即抛异常"""
         self.config = config.get_config()
         self.api = self.config['chat']['api']
-        self.client = OpenAI(api_key = self.config['key_list'][self.api], base_url = self.config['api_list'][self.api])
+        key = self.config['key_list'].get(self.api, '')
+        self.client = OpenAI(api_key = key, base_url = self.config['api_list'][self.api]) if key else None
 
     async def get(self, event: EventMessage, text: str):
+        self.refresh()
+        if self.client is None:
+            logging.error(f"未配置 {self.api} 的API Key，跳过本次请求")
+            await self.bot_service.send_group_message(event.group_id, "未配置API Key，请先配置后重试")
+            return
+
         message = event.message
         at = False
         card = event.sender.card or event.sender.nickname
@@ -43,9 +54,7 @@ class ChatService:
             self.save_messages(event.group_id, messages)  # 保存所有消息
             return
         
-        self.config = config.get_config()
-        self.api = self.config['chat']['api']
-        self.client = OpenAI(api_key = self.config['key_list'][self.api], base_url = self.config['api_list'][self.api])
+        self.refresh()
 
         await self.ai_chat(event.group_id, card, event.user_id, text)
 
